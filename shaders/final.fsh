@@ -10,6 +10,8 @@ uniform mat4 gbufferModelViewInverse;
 
 uniform ivec2 eyeBrightnessSmooth;
 uniform int worldTime;
+uniform int worldDay;
+uniform float thunderStrength;
 uniform float frameTimeCounter;
 uniform float rainStrength;
 uniform float wetness;
@@ -92,6 +94,54 @@ vec3 applyAurora(vec3 color, vec3 worldDir, float skyPixel) {
 }
 
 
+
+float weatherHash(float n) {
+    return fract(sin(n * 127.1 + 311.7) * 43758.5453123);
+}
+
+float weatherIntensity() {
+    if (rainStrength <= 0.001) return 0.0;
+
+    // Divide Minecraft time into broad, irregular-feeling weather cells.
+    // Each cell is deterministic for a given world day/time, so intensity does not
+    // flicker when frames change and survives shader reloads predictably.
+    float absoluteTicks = float(worldDay) * 24000.0 + float(worldTime);
+    float cellLength = 3600.0; // roughly three real minutes at normal tick rate
+    float cell = floor(absoluteTicks / cellLength);
+    float phase = fract(absoluteTicks / cellLength);
+
+    float r0 = weatherHash(cell);
+    float r1 = weatherHash(cell + 1.0);
+
+    // Weighted, non-linear weather states:
+    // mist/drizzle are common; heavy rain is occasional; torrential rain is rare.
+    float state0;
+    if      (r0 < 0.20) state0 = 0.12; // mist / barely-there rain
+    else if (r0 < 0.45) state0 = 0.25; // drizzle
+    else if (r0 < 0.70) state0 = 0.43; // light shower
+    else if (r0 < 0.88) state0 = 0.62; // steady rain
+    else if (r0 < 0.97) state0 = 0.80; // heavy shower
+    else                state0 = 1.00; // torrential
+
+    float state1;
+    if      (r1 < 0.20) state1 = 0.12;
+    else if (r1 < 0.45) state1 = 0.25;
+    else if (r1 < 0.70) state1 = 0.43;
+    else if (r1 < 0.88) state1 = 0.62;
+    else if (r1 < 0.97) state1 = 0.80;
+    else                state1 = 1.00;
+
+    // Hold each pattern for most of its cell, then transition softly near the end.
+    // This avoids constant ramping while also avoiding hard visual jumps.
+    float transition = smoothstep(0.76, 1.0, phase);
+    float intensity = mix(state0, state1, transition);
+
+    // Thunderstorms should normally feel substantial, but still retain variation.
+    intensity = max(intensity, thunderStrength * 0.72);
+
+    return intensity * rainStrength;
+}
+
 float puddleNoise(vec2 p) {
     float a = valueNoise(p * 0.065);
     float b = valueNoise(p * 0.135 + vec2(17.3, 4.8));
@@ -127,12 +177,13 @@ vec3 applyRainWetness(vec3 color, float depth) {
     float puddle = surfaceWet * puddlePatch;
 
     // Fresh rain makes most exposed ground darker before obvious puddles have formed.
-    float darkening = surfaceWet * mix(0.10, 0.24, rainStrength);
+    float dynamicRain = weatherIntensity();
+    float darkening = surfaceWet * mix(0.07, 0.27, dynamicRain);
     color *= 1.0 - darkening;
 
     // Puddles softly borrow the sky tone. This is deliberately diffuse rather than
     // mirror-like until we add a dedicated reflection system.
-    vec3 reflectedSky = mix(vec3(0.20, 0.25, 0.32), vec3(0.54, 0.66, 0.74), 1.0 - rainStrength);
+    vec3 reflectedSky = mix(vec3(0.20, 0.25, 0.32), vec3(0.54, 0.66, 0.74), 1.0 - dynamicRain);
     float fresnel = pow(1.0 - clamp(abs(dot(normalize(-viewPos), normal)), 0.0, 1.0), 3.0);
     float sheen = puddle * mix(0.16, 0.38, fresnel);
 
