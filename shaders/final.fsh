@@ -12,6 +12,8 @@ uniform ivec2 eyeBrightnessSmooth;
 uniform int worldTime;
 uniform float frameTimeCounter;
 uniform float rainStrength;
+uniform float wetness;
+uniform vec3 cameraPosition;
 uniform int isEyeInWater;
 uniform bool hasSkylight;
 
@@ -89,6 +91,58 @@ vec3 applyAurora(vec3 color, vec3 worldDir, float skyPixel) {
     return color + auroraColor * aurora;
 }
 
+
+float puddleNoise(vec2 p) {
+    float a = valueNoise(p * 0.065);
+    float b = valueNoise(p * 0.135 + vec2(17.3, 4.8));
+    return a * 0.68 + b * 0.32;
+}
+
+vec3 applyRainWetness(vec3 color, float depth) {
+    if (!hasSkylight || isEyeInWater != 0 || depth >= 0.999999) {
+        return color;
+    }
+
+    vec3 viewPos = reconstructViewPosition(depth);
+    vec3 playerPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
+    vec3 worldPos = playerPos + cameraPosition;
+
+    // Estimate a screen-visible surface normal from reconstructed world positions.
+    // This lets horizontal surfaces collect far more water than walls.
+    vec3 dx = dFdx(worldPos);
+    vec3 dy = dFdy(worldPos);
+    vec3 normal = normalize(cross(dx, dy));
+    if (normal.y < 0.0) normal = -normal;
+
+    float upward = smoothstep(0.72, 0.97, normal.y);
+    float skyLight = float(eyeBrightnessSmooth.y) / 240.0;
+    float exposed = smoothstep(0.45, 0.92, skyLight);
+
+    // Iris wetness lingers after rain according to wetnessHalflife.
+    float surfaceWet = wetness * upward * exposed;
+
+    // Large, soft world-space patches imply shallow depressions and uneven drainage.
+    float basin = puddleNoise(worldPos.xz);
+    float puddlePatch = smoothstep(0.56, 0.76, basin);
+    float puddle = surfaceWet * puddlePatch;
+
+    // Fresh rain makes most exposed ground darker before obvious puddles have formed.
+    float darkening = surfaceWet * mix(0.10, 0.24, rainStrength);
+    color *= 1.0 - darkening;
+
+    // Puddles softly borrow the sky tone. This is deliberately diffuse rather than
+    // mirror-like until we add a dedicated reflection system.
+    vec3 reflectedSky = mix(vec3(0.20, 0.25, 0.32), vec3(0.54, 0.66, 0.74), 1.0 - rainStrength);
+    float fresnel = pow(1.0 - clamp(abs(dot(normalize(-viewPos), normal)), 0.0, 1.0), 3.0);
+    float sheen = puddle * mix(0.16, 0.38, fresnel);
+
+    color = mix(color, reflectedSky, sheen);
+
+    // Tiny broad highlight keeps wet stone/soil from reading as merely darkened.
+    color += vec3(0.018, 0.020, 0.022) * surfaceWet * (0.35 + 0.65 * fresnel);
+    return color;
+}
+
 vec3 applyCaveAtmosphere(vec3 color, float depth) {
     float skyLight = float(eyeBrightnessSmooth.y) / 240.0;
     float cave = (1.0 - smoothstep(0.08, 0.34, skyLight));
@@ -161,6 +215,7 @@ void main() {
 
     vec3 color = scene.rgb;
 
+    color = applyRainWetness(color, depth);
     color = applyCaveAtmosphere(color, depth);
     color = applyMediterraneanUnderwater(color, depth);
 
