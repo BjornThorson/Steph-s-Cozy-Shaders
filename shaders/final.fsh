@@ -11,6 +11,8 @@ uniform mat4 gbufferModelViewInverse;
 uniform ivec2 eyeBrightnessSmooth;
 uniform int worldTime;
 uniform int worldDay;
+uniform int moonPhase;
+uniform vec3 moonPosition;
 uniform float thunderStrength;
 uniform float frameTimeCounter;
 uniform float rainStrength;
@@ -66,6 +68,49 @@ float valueNoise(vec2 p) {
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
+
+float moonFullness() {
+    // Minecraft phases: 0 full, 1 waning gibbous, 2 third quarter,
+    // 3 waning crescent, 4 new, then waxing back toward full.
+    float phase = float(moonPhase);
+    float distanceFromFull = min(phase, 8.0 - phase);
+    return 0.5 + 0.5 * cos(distanceFromFull * 3.14159265 / 4.0);
+}
+
+vec3 applyWitchMoonAtmosphere(vec3 color, vec3 worldDir, float skyPixel) {
+    float night = nightFactor() * (1.0 - rainStrength) * skyPixel;
+    if (night <= 0.001) return color;
+
+    // moonPosition is view-space; rotate it into the same world-relative frame
+    // used by our reconstructed sky ray.
+    vec3 moonDir = normalize(mat3(gbufferModelViewInverse) * normalize(moonPosition));
+    float alignment = max(dot(worldDir, moonDir), 0.0);
+
+    float fullness = moonFullness();
+
+    // A broad silver-lavender halo around the vanilla moon direction.
+    float outerHalo = pow(alignment, 42.0);
+    float innerHalo = pow(alignment, 180.0);
+    vec3 silver = vec3(0.74, 0.78, 0.94);
+    vec3 lavender = vec3(0.57, 0.47, 0.82);
+    vec3 ivory = vec3(1.00, 0.94, 0.78);
+
+    vec3 halo = mix(lavender, silver, 0.62);
+    halo = mix(halo, ivory, innerHalo * (0.35 + 0.45 * fullness));
+
+    float strength = night * (0.22 + 0.58 * fullness);
+    color += halo * outerHalo * strength * 0.36;
+    color += ivory * innerHalo * strength * 0.28;
+
+    // Full moons softly silver the whole night sky; new moons retreat into indigo.
+    vec3 moonlitSky = vec3(0.055, 0.065, 0.115);
+    vec3 newMoonSky = vec3(0.020, 0.018, 0.052);
+    vec3 phaseTint = mix(newMoonSky, moonlitSky, fullness);
+    color += phaseTint * night * (0.18 + 0.24 * fullness);
+
+    return color;
+}
+
 vec3 applyAurora(vec3 color, vec3 worldDir, float skyPixel) {
     float night = nightFactor() * (1.0 - rainStrength);
     float aboveHorizon = smoothstep(0.02, 0.22, worldDir.y);
@@ -82,7 +127,7 @@ vec3 applyAurora(vec3 color, vec3 worldDir, float skyPixel) {
 
     float vertical = smoothstep(0.08, 0.30, worldDir.y) * zenithFade;
     float aurora = curtainShape * mix(0.45, 1.0, fine) * vertical * aboveHorizon;
-    aurora *= night * skyPixel * 0.58;
+    aurora *= night * skyPixel * mix(0.72, 0.48, moonFullness());
 
     vec3 green = vec3(0.22, 1.00, 0.58);
     vec3 teal = vec3(0.12, 0.72, 0.86);
@@ -272,6 +317,7 @@ void main() {
 
     if (hasSkylight && depth >= 0.999999 && isEyeInWater == 0) {
         vec3 worldDir = reconstructWorldDirection();
+        color = applyWitchMoonAtmosphere(color, worldDir, 1.0);
         color = applyAurora(color, worldDir, 1.0);
     }
 
