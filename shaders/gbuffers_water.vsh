@@ -21,17 +21,22 @@ void main() {
     materialId = int(mc_Entity.x + 0.5);
     isFluid = int(mc_Entity.y + 0.5);
 
-    // Water gets a tiny vertical displacement only. Horizontal displacement at
-    // chunk/block edges can open visible cracks, so the first prototype stays conservative.
-    if (materialId == 1001 && isFluid == 1) {
+    // Fluids get vertical-only displacement. Water is lively and light; lava
+    // moves more slowly and heavily. Avoid horizontal movement so block edges
+    // do not open visible cracks.
+    if ((materialId == 1001 || materialId == 1002) && isFluid == 1) {
         vec3 playerPos = (gbufferModelViewInverse * viewVertex).xyz;
         vec3 worldPos = playerPos + cameraPosition;
 
-        float waveA = sin(worldPos.x * 0.38 + worldPos.z * 0.24 + frameTimeCounter * 1.10);
-        float waveB = sin(worldPos.x * -0.21 + worldPos.z * 0.44 - frameTimeCounter * 0.76);
-        float wave = (waveA + waveB) * 0.012;
-
-        viewVertex.y += wave;
+        if (materialId == 1001) {
+            float waveA = sin(worldPos.x * 0.38 + worldPos.z * 0.24 + frameTimeCounter * 1.10);
+            float waveB = sin(worldPos.x * -0.21 + worldPos.z * 0.44 - frameTimeCounter * 0.76);
+            viewVertex.y += (waveA + waveB) * 0.012;
+        } else {
+            float rollA = sin(worldPos.x * 0.22 + worldPos.z * 0.17 + frameTimeCounter * 0.28);
+            float rollB = sin(worldPos.x * -0.14 + worldPos.z * 0.29 - frameTimeCounter * 0.19);
+            viewVertex.y += (rollA + rollB) * 0.006;
+        }
     }
 
     gl_Position = gl_ProjectionMatrix * viewVertex;
