@@ -113,6 +113,8 @@ vec3 applyWitchMoonAtmosphere(vec3 color, vec3 worldDir, float skyPixel) {
 
 vec3 applyAurora(vec3 color, vec3 worldDir, float skyPixel) {
     float night = nightFactor() * (1.0 - rainStrength);
+    // Skip expensive trigonometry and procedural noise outside visible night sky.
+    if (skyPixel <= 0.001 || night <= 0.001 || worldDir.y <= 0.02 || worldDir.y >= 0.98) return color;
     float aboveHorizon = smoothstep(0.02, 0.22, worldDir.y);
     float zenithFade = 1.0 - smoothstep(0.72, 0.98, worldDir.y);
 
@@ -198,6 +200,10 @@ vec3 applyRainWetness(vec3 color, float depth) {
         return color;
     }
 
+    // On dry frames there is no wetness to shade; avoid reconstruction,
+    // derivatives and multi-octave noise on every opaque pixel.
+    if (wetness <= 0.001) return color;
+
     vec3 viewPos = reconstructViewPosition(depth);
     vec3 playerPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz;
     vec3 worldPos = playerPos + cameraPosition;
@@ -215,6 +221,7 @@ vec3 applyRainWetness(vec3 color, float depth) {
 
     // Iris wetness lingers after rain according to wetnessHalflife.
     float surfaceWet = wetness * upward * exposed;
+    if (surfaceWet <= 0.001) return color;
 
     // Large, soft world-space patches imply shallow depressions and uneven drainage.
     float basin = puddleNoise(worldPos.xz);
