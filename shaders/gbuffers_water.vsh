@@ -13,7 +13,8 @@ uniform mat4 gbufferModelViewInverse;
 uniform vec3 cameraPosition;
 uniform float frameTimeCounter;
 
-in vec4 mc_Entity;
+// Iris/Oculus supplies material ID and fluid flag as a two-component attribute.
+in vec2 mc_Entity;
 
 void main() {
     vec4 viewVertex = gl_ModelViewMatrix * gl_Vertex;
