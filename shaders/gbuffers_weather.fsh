@@ -45,7 +45,9 @@ void main() {
 
     // Preserve Minecraft's rain/snow geometry but vary how strongly it reads.
     // Mist is sparse/soft; torrential weather approaches full vanilla density.
-    weather.a *= mix(0.18, 1.0, intensity);
+    weather.a *= mix(0.32, 1.0, intensity);
+    // Cooler, heavier rainfall contrasts with the warmer world palette.
+    weather.rgb *= mix(vec3(0.94, 1.00, 1.08), vec3(0.78, 0.88, 1.00), intensity);
     weather.rgb *= mix(1.08, 0.78, intensity);
 
     fragColor = weather;

@@ -118,12 +118,14 @@ vec3 applyAurora(vec3 color, vec3 worldDir, float skyPixel) {
     float aboveHorizon = smoothstep(0.02, 0.22, worldDir.y);
     float zenithFade = 1.0 - smoothstep(0.72, 0.98, worldDir.y);
 
+    // Periodic angular noise avoids the seam where atan wraps at +/-pi.
     float longitude = atan(worldDir.z, worldDir.x);
     float latitude = asin(clamp(worldDir.y, -1.0, 1.0));
 
     float drift = frameTimeCounter * 0.018;
-    float broad = valueNoise(vec2(longitude * 1.7 + drift, latitude * 2.2));
-    float fine = valueNoise(vec2(longitude * 4.8 - drift * 1.4, latitude * 5.0 + drift));
+    // Use continuous direction components for noise to eliminate the angular seam.
+    float broad = valueNoise(worldDir.xz * 3.5 + vec2(drift, latitude * 1.3));
+    float fine = valueNoise(worldDir.xz * 10.0 + vec2(-drift * 1.4, latitude * 2.1 + drift));
     float curtainShape = sin(longitude * 7.0 + broad * 5.0 + drift * 2.0);
     curtainShape = pow(max(0.0, 0.55 + 0.45 * curtainShape), 3.0);
 
@@ -295,11 +297,11 @@ vec3 storybookGrade(vec3 color) {
     float luma = luminance(color);
 
     // Honeyed highlights and cool-violet shadows create the warm fantasy contrast.
-    vec3 warmHighlights = vec3(1.045, 1.010, 0.945);
+    vec3 warmHighlights = vec3(1.095, 1.025, 0.900);
     color *= warmHighlights;
 
     float shadow = 1.0 - smoothstep(0.08, 0.42, luma);
-    color += vec3(0.010, 0.008, 0.020) * shadow;
+    color += vec3(0.015, 0.009, 0.019) * shadow;
 
     // Gentle saturation, deliberately restrained so Minecraft textures stay readable.
     float gradedLuma = luminance(color);
@@ -328,6 +330,13 @@ void main() {
         color = applyAurora(color, worldDir, 1.0);
     }
 
+    // Darken natural nighttime light while keeping moon/aurora visible.
+    // Avoid dimming caves or underwater views based solely on clock time.
+    if (hasSkylight && isEyeInWater == 0) {
+        float night = nightFactor();
+        float skyExposure = smoothstep(0.06, 0.42, float(eyeBrightnessSmooth.y) / 240.0);
+        color *= 1.0 - 0.24 * night * skyExposure;
+    }
     color = storybookGrade(color);
     fragColor = vec4(clamp(color, 0.0, 1.0), scene.a);
 }

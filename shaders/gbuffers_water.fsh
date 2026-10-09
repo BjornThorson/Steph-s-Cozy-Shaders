@@ -141,8 +141,8 @@ void main() {
     ambientSky = mix(ambientSky, vec3(0.34, 0.40, 0.47), rainStrength * 0.58);
 
     // Looking downward: clear and inviting. Grazing angles: increasingly reflective.
-    float transmission = mix(0.34, 0.13, fresnel);
-    vec3 transmitted = mix(base.rgb, waterColor, 0.42);
+    float transmission = mix(0.72, 0.45, fresnel);
+    vec3 transmitted = mix(base.rgb, waterColor, 0.66);
     vec3 reflected = mix(waterColor, ambientSky, 0.72);
 
     vec3 color = mix(transmitted, reflected, fresnel * 0.68);
@@ -152,7 +152,7 @@ void main() {
     color += vec3(1.00, 0.82, 0.52) * glint * 0.12;
 
     // Keep substantial transparency so the seabed remains visually important.
-    float alpha = clamp(base.a * transmission + fresnel * 0.18, 0.10, 0.52);
+    float alpha = clamp(base.a * transmission + fresnel * 0.25, 0.30, 0.78);
 
     fragColor = vec4(color, alpha);
 }
