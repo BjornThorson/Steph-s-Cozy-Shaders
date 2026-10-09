@@ -32,11 +32,13 @@ void main() {
         if (materialId == 1001) {
             float waveA = sin(worldPos.x * 0.38 + worldPos.z * 0.24 + frameTimeCounter * 1.10);
             float waveB = sin(worldPos.x * -0.21 + worldPos.z * 0.44 - frameTimeCounter * 0.76);
-            viewVertex.y += (waveA + waveB) * 0.012;
+            // Displace in world-up, then transform back to view space.
+            vec3 offsetView = mat3(gl_ModelViewMatrix) * vec3(0.0, (waveA + waveB) * 0.018, 0.0);
+            viewVertex.xyz += offsetView;
         } else {
             float rollA = sin(worldPos.x * 0.22 + worldPos.z * 0.17 + frameTimeCounter * 0.28);
             float rollB = sin(worldPos.x * -0.14 + worldPos.z * 0.29 - frameTimeCounter * 0.19);
-            viewVertex.y += (rollA + rollB) * 0.006;
+            viewVertex.xyz += mat3(gl_ModelViewMatrix) * vec3(0.0, (rollA + rollB) * 0.006, 0.0);
         }
     }
 

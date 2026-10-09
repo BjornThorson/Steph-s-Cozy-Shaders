@@ -150,6 +150,23 @@ vec3 applyAurora(vec3 color, vec3 worldDir, float skyPixel) {
 
 
 
+// Lightweight painterly sky clouds: two moving noise layers on a sky-only pass.
+// Keep them sparse at night so the approved aurora and moon remain legible.
+vec3 applyStorybookClouds(vec3 color, vec3 dir) {
+    if (dir.y <= 0.08) return color;
+    float daytime = 1.0 - nightFactor();
+    if (daytime <= 0.001) return color;
+    vec2 sky = dir.xz / max(dir.y + 0.35, 0.45);
+    vec2 drift = vec2(frameTimeCounter * 0.003, frameTimeCounter * 0.001);
+    float broad = valueNoise(sky * 1.7 + drift);
+    float detail = valueNoise(sky * 4.3 - drift * 1.6);
+    float shape = smoothstep(0.57, 0.75, broad * 0.76 + detail * 0.24);
+    float horizon = smoothstep(0.08, 0.23, dir.y);
+    float opacity = shape * horizon * daytime * (1.0 - rainStrength * 0.55) * 0.56;
+    vec3 cream = mix(vec3(0.92, 0.77, 0.65), vec3(1.0, 0.94, 0.84), clamp(dir.y, 0.0, 1.0));
+    return mix(color, cream, opacity);
+}
+
 float weatherHash(float n) {
     return fract(sin(n * 127.1 + 311.7) * 43758.5453123);
 }
@@ -233,7 +250,7 @@ vec3 applyRainWetness(vec3 color, float depth) {
 
     // Large, soft world-space patches imply shallow depressions and uneven drainage.
     float basin = puddleNoise(worldPos.xz);
-    float puddlePatch = smoothstep(0.56, 0.76, basin);
+    float puddlePatch = smoothstep(0.46, 0.65, basin);
     float puddle = surfaceWet * puddlePatch;
 
     // Fresh rain makes most exposed ground darker before obvious puddles have formed.
@@ -245,7 +262,7 @@ vec3 applyRainWetness(vec3 color, float depth) {
     // mirror-like until we add a dedicated reflection system.
     vec3 reflectedSky = mix(vec3(0.20, 0.25, 0.32), vec3(0.54, 0.66, 0.74), 1.0 - dynamicRain);
     float fresnel = pow(1.0 - clamp(abs(dot(normalize(-viewPos), normal)), 0.0, 1.0), 3.0);
-    float sheen = puddle * mix(0.16, 0.38, fresnel);
+    float sheen = puddle * mix(0.32, 0.56, fresnel);
 
     color = mix(color, reflectedSky, sheen);
 
@@ -303,7 +320,7 @@ vec3 storybookGrade(vec3 color) {
     float luma = luminance(color);
 
     // Honeyed highlights and cool-violet shadows create the warm fantasy contrast.
-    vec3 warmHighlights = vec3(1.095, 1.025, 0.900);
+    vec3 warmHighlights = vec3(1.12, 1.035, 0.89);
     color *= warmHighlights;
 
     float shadow = 1.0 - smoothstep(0.08, 0.42, luma);
@@ -311,7 +328,7 @@ vec3 storybookGrade(vec3 color) {
 
     // Gentle saturation, deliberately restrained so Minecraft textures stay readable.
     float gradedLuma = luminance(color);
-    color = mix(vec3(gradedLuma), color, 1.08);
+    color = mix(vec3(gradedLuma), color, 1.22);
 
     // Soft highlight rolloff rather than hard clipping.
     color = color / (vec3(1.0) + max(color - 0.82, 0.0) * 0.32);
@@ -332,6 +349,7 @@ void main() {
 
     if (hasSkylight && depth >= 0.999999 && isEyeInWater == 0) {
         vec3 worldDir = reconstructWorldDirection();
+        color = applyStorybookClouds(color, worldDir);
         color = applyWitchMoonAtmosphere(color, worldDir, 1.0);
         color = applyAurora(color, worldDir, 1.0);
     }
