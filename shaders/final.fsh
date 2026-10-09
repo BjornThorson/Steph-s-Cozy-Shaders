@@ -150,6 +150,62 @@ vec3 applyAurora(vec3 color, vec3 worldDir, float skyPixel) {
 
 
 
+// Celestial sky: sparse stable stars in a continuous 3D direction field.
+// Three orthogonal projections avoid longitude seams and screen-space swimming.
+float starField(vec3 direction, float scale, float seed) {
+    vec3 p = direction * scale;
+    vec3 cell = floor(p);
+    vec3 f = fract(p) - 0.5;
+    float brightness = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        vec2 grid = i == 0 ? cell.xy : (i == 1 ? cell.yz : cell.xz);
+        vec2 local = i == 0 ? f.xy : (i == 1 ? f.yz : f.xz);
+        float chance = hash21(grid + vec2(seed, seed * 1.73));
+        float star = smoothstep(0.994, 0.9995, chance);
+        vec2 offset = vec2(hash21(grid + seed + 17.1), hash21(grid + seed + 41.7)) - 0.5;
+        float radius = length(local - offset * 0.62);
+        float dotShape = 1.0 - smoothstep(0.008, 0.033, radius);
+        brightness = max(brightness, star * dotShape);
+    }
+    return brightness;
+}
+
+vec3 applyStorybookStars(vec3 color, vec3 dir) {
+    float night = nightFactor() * (1.0 - rainStrength * 0.92);
+    if (night <= 0.001 || dir.y <= 0.035) return color;
+    float horizon = smoothstep(0.035, 0.24, dir.y);
+    float tiny = starField(dir, 165.0, 4.3);
+    float bright = starField(dir, 95.0, 71.9);
+    float shimmer = 0.93 + 0.07 * sin(frameTimeCounter * 0.7 + dot(dir, vec3(43.0, 71.0, 29.0)));
+    vec3 warm = vec3(1.0, 0.87, 0.72);
+    vec3 cool = vec3(0.74, 0.87, 1.0);
+    vec3 starlight = tiny * cool * 0.48 + bright * warm * 0.80;
+    return color + starlight * shimmer * night * horizon;
+}
+
+// Rare short meteor glints, positioned in world direction rather than screen UV.
+// The event repeats on a long clock so it remains inexpensive and deterministic.
+vec3 applyShootingStar(vec3 color, vec3 dir) {
+    float night = nightFactor() * (1.0 - rainStrength);
+    if (night <= 0.001 || dir.y <= 0.15) return color;
+    float cycle = floor(frameTimeCounter / 97.0);
+    float age = mod(frameTimeCounter, 97.0);
+    float enabled = step(0.79, hash21(vec2(cycle, 83.2)));
+    float visible = (1.0 - smoothstep(0.0, 1.2, age)) * enabled;
+    if (visible <= 0.001) return color;
+    vec3 center = normalize(vec3(hash21(vec2(cycle, 4.1)) * 1.5 - 0.75,
+                                  0.55 + hash21(vec2(cycle, 8.9)) * 0.35,
+                                  hash21(vec2(cycle, 15.3)) * 1.5 - 0.75));
+    vec3 tangent = normalize(cross(center, vec3(0.0, 1.0, 0.0)));
+    float along = dot(dir - center, tangent);
+    float across = length((dir - center) - tangent * along);
+    float head = age * 0.09 - 0.045;
+    float tail = smoothstep(head - 0.085, head - 0.02, along) *
+                 (1.0 - smoothstep(head, head + 0.006, along));
+    float streak = (1.0 - smoothstep(0.002, 0.009, across)) * tail;
+    return color + vec3(0.68, 0.80, 1.0) * streak * visible * night;
+}
+
 // Lightweight painterly sky clouds: two moving noise layers on a sky-only pass.
 // Keep them sparse at night so the approved aurora and moon remain legible.
 vec3 applyStorybookClouds(vec3 color, vec3 dir) {
@@ -350,6 +406,8 @@ void main() {
     if (hasSkylight && depth >= 0.999999 && isEyeInWater == 0) {
         vec3 worldDir = reconstructWorldDirection();
         color = applyStorybookClouds(color, worldDir);
+        color = applyStorybookStars(color, worldDir);
+        color = applyShootingStar(color, worldDir);
         color = applyWitchMoonAtmosphere(color, worldDir, 1.0);
         color = applyAurora(color, worldDir, 1.0);
     }
