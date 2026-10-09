@@ -36,3 +36,25 @@ not proof of in-game operation.
 - The weather program changes both rain and snow opacity.
 - No OpenGL context, Oculus runtime, modpack, or real device was used in
   this static pass. No performance claim can be made.
+
+## Offline Validation 2
+
+Run `bash tools/validate_glsl.sh` with `glslangValidator` installed
+(e.g. the Debian `glslang-tools` package). This compiles all six shader
+stages and links the three vertex/fragment pairs. A passing result does not
+prove that Oculus will recognize all uniforms or provide correct render data.
+
+### Compatibility audit — outstanding runtime risks
+
+- `mc_Entity` is declared `vec2` and water/lava block IDs are mapped, but
+  the actual fluid flag and custom ID delivery remain untested.
+- `moonPosition`, `moonPhase`, `hasSkylight`, and depth reconstruction
+  must be checked in the actual loader; offline compilers cannot verify
+  loader-defined uniform values or coordinate conventions.
+- `wetnessHalflife` and `eyeBrightnessHalflife` rely on the loader
+  recognizing shader configuration directives.
+- Water uses an approximate depth tint, not physical refraction. Lava glow
+  is emissive-looking colour, not a dynamic light source.
+- Weather rendering affects snow as well as rain; inspect both in-game.
+- Link validation does not check framebuffer attachments, blending state,
+  graphics-driver performance, or modpack compatibility.
