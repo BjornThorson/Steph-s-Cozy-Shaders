@@ -15,6 +15,14 @@ uniform float frameTimeCounter;
 uniform float rainStrength;
 uniform vec3 skyColor;
 uniform vec3 fogColor;
+uniform sampler2D depthtex1;
+uniform vec2 viewSize;
+uniform mat4 gbufferProjectionInverse;
+
+// Set to 1 to verify water state classification in-game:
+// source blue, flowing amber, falling magenta, unknown red.
+#define WATER_STATE_DEBUG 0
+
 
 layout(location = 0) out vec4 fragColor;
 
@@ -107,11 +115,33 @@ void main() {
 
     // Everything except explicitly identified water/lava keeps essentially
     // vanilla translucent behaviour. This protects glass and modded materials.
-    if (materialId != 1001 || isFluid != 1) {
+    if ((materialId != 1001 && materialId != 1003 && materialId != 1004) || isFluid != 1) {
         vec3 lit = base.rgb * texture2D(lightmap, lightcoord).rgb;
         fragColor = vec4(lit, base.a);
         return;
     }
+
+    #if WATER_STATE_DEBUG
+    vec3 diagnostic = materialId == 1001 ? vec3(0.08, 0.35, 1.0) :
+                      materialId == 1003 ? vec3(1.0, 0.60, 0.08) :
+                      materialId == 1004 ? vec3(0.90, 0.10, 0.85) : vec3(1.0, 0.0, 0.0);
+    fragColor = vec4(diagnostic, 0.85);
+    return;
+    #endif
+
+    vec2 screenUV = gl_FragCoord.xy / viewSize;
+    float behindDepth = texture2D(depthtex1, screenUV).r;
+    // Opaque depth is behind transparent water where the buffer is available.
+    vec4 opaqueClip = vec4(screenUV * 2.0 - 1.0, behindDepth * 2.0 - 1.0, 1.0);
+    vec4 opaqueView = gbufferProjectionInverse * opaqueClip;
+    float opaqueDistance = length(opaqueView.xyz / max(abs(opaqueView.w), 0.0001));
+    float waterDistance = length(viewPosition);
+    float thickness = max(0.0, opaqueDistance - waterDistance);
+    bool validDepth = behindDepth < 0.99999 && thickness > 0.001 && thickness < 64.0;
+    float shallow = validDepth ? (1.0 - smoothstep(0.3, 3.0, thickness)) : 0.0;
+    float contact = validDepth ? (1.0 - smoothstep(0.02, 0.43, thickness)) : 0.0;
+    float flowing = float(materialId == 1003);
+    float falling = float(materialId == 1004);
 
     vec3 N = normalize(viewNormal);
     vec3 V = normalize(-viewPosition);
@@ -152,7 +182,19 @@ void main() {
     color += vec3(1.00, 0.88, 0.67) * glint * 0.20;
 
     // Keep substantial transparency so the seabed remains visually important.
+    // Depth-aware transmission: shallow beds remain legible, deeper water retains
+    // the approved rich colour. If opaque depth is unavailable, fall back safely.
     float alpha = clamp(base.a * transmission * 0.56 + fresnel * 0.22, 0.12, 0.67);
+    alpha *= 1.0 - 0.50 * shallow;
+
+    // Narrow salted-rim contact foam; stronger on moving/falling water.
+    float breakup = smoothNoise(worldPosition.xz * 7.0 +
+                                vec2(frameTimeCounter * 0.24, -frameTimeCounter * 0.13));
+    float rim = contact * smoothstep(0.34, 0.73, breakup);
+    float activity = 0.20 + flowing * 0.36 + falling * 0.68;
+    float foam = clamp(rim * activity, 0.0, 0.75);
+    color = mix(color, vec3(0.87, 0.93, 0.96), foam);
+    alpha = mix(alpha, 0.87, foam * 0.70);
 
     fragColor = vec4(color, alpha);
 }

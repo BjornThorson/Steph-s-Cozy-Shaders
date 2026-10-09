@@ -25,15 +25,15 @@ void main() {
     // Fluids get vertical-only displacement. Water is lively and light; lava
     // moves more slowly and heavily. Avoid horizontal movement so block edges
     // do not open visible cracks.
-    if ((materialId == 1001 || materialId == 1002) && isFluid == 1) {
+    if (((materialId == 1001 || materialId == 1003 || materialId == 1004) || materialId == 1002) && isFluid == 1) {
         vec3 playerPos = (gbufferModelViewInverse * viewVertex).xyz;
         vec3 worldPos = playerPos + cameraPosition;
 
-        if (materialId == 1001) {
+        if (materialId == 1001 || materialId == 1003 || materialId == 1004) {
             float waveA = sin(worldPos.x * 0.38 + worldPos.z * 0.24 + frameTimeCounter * 1.10);
             float waveB = sin(worldPos.x * -0.21 + worldPos.z * 0.44 - frameTimeCounter * 0.76);
             // Displace in world-up, then transform back to view space.
-            vec3 offsetView = mat3(gl_ModelViewMatrix) * vec3(0.0, (waveA + waveB) * 0.018, 0.0);
+            vec3 offsetView = mat3(gl_ModelViewMatrix) * vec3(0.0, (waveA + waveB) * 0.028, 0.0);
             viewVertex.xyz += offsetView;
         } else {
             float rollA = sin(worldPos.x * 0.22 + worldPos.z * 0.17 + frameTimeCounter * 0.28);
