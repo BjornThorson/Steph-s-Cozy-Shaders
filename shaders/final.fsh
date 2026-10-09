@@ -206,21 +206,41 @@ vec3 applyShootingStar(vec3 color, vec3 dir) {
     return color + vec3(0.68, 0.80, 1.0) * streak * visible * night;
 }
 
-// Lightweight painterly sky clouds: two moving noise layers on a sky-only pass.
-// Keep them sparse at night so the approved aurora and moon remain legible.
+// Two-layer cloudscape: softened squared lower cumulus and high cirrus wisps.
+// Sky-only, fixed-cost procedural shading; no volumetric raymarching.
 vec3 applyStorybookClouds(vec3 color, vec3 dir) {
-    if (dir.y <= 0.08) return color;
-    float daytime = 1.0 - nightFactor();
-    if (daytime <= 0.001) return color;
-    vec2 sky = dir.xz / max(dir.y + 0.35, 0.45);
-    vec2 drift = vec2(frameTimeCounter * 0.003, frameTimeCounter * 0.001);
-    float broad = valueNoise(sky * 1.7 + drift);
-    float detail = valueNoise(sky * 4.3 - drift * 1.6);
-    float shape = smoothstep(0.57, 0.75, broad * 0.76 + detail * 0.24);
-    float horizon = smoothstep(0.08, 0.23, dir.y);
-    float opacity = shape * horizon * daytime * (1.0 - rainStrength * 0.55) * 0.56;
-    vec3 cream = mix(vec3(0.92, 0.77, 0.65), vec3(1.0, 0.94, 0.84), clamp(dir.y, 0.0, 1.0));
-    return mix(color, cream, opacity);
+    if (dir.y <= 0.055) return color;
+    float day = 1.0 - nightFactor();
+    float twilight = smoothstep(0.0, 0.25, day);
+    float visibility = max(day, (1.0 - day) * 0.09);
+    if (visibility <= 0.001) return color;
+
+    vec2 sky = dir.xz / max(dir.y + 0.30, 0.38);
+    vec2 drift = vec2(frameTimeCounter * 0.0027, frameTimeCounter * 0.0011);
+
+    // Square-like footprints from max-norm distance, rounded with noise.
+    vec2 cells = sky * 1.65 + drift;
+    vec2 id = floor(cells);
+    vec2 local = abs(fract(cells) - 0.5);
+    float radius = max(local.x, local.y);
+    float variation = valueNoise(cells * 1.7 + vec2(5.2, 3.7));
+    float coverage = hash21(id + vec2(21.7, 13.4));
+    float lower = (1.0 - smoothstep(0.25, 0.39, radius + (variation - 0.5) * 0.11));
+    lower *= smoothstep(0.37, 0.65, coverage);
+    lower *= smoothstep(0.07, 0.22, dir.y);
+    float sunFace = clamp(0.52 + 0.48 * dir.y + (variation - 0.5) * 0.25, 0.0, 1.0);
+    vec3 cloudShade = mix(vec3(0.57, 0.63, 0.76), vec3(1.0, 0.95, 0.82), sunFace);
+    cloudShade = mix(cloudShade, vec3(1.0, 0.75, 0.57), (1.0 - twilight) * 0.32);
+    color = mix(color, cloudShade, lower * visibility * (1.0 - rainStrength * 0.48) * 0.68);
+
+    // Stretched, translucent high-altitude strokes, visually distinct from
+    // the block-inspired lower layer.
+    vec2 cirrusUV = vec2(sky.x * 2.5 + sky.y * 0.35, sky.y * 11.0 - sky.x * 0.7);
+    float cirrus = valueNoise(cirrusUV + drift * 2.2);
+    float wisps = smoothstep(0.64, 0.82, cirrus) *
+                  smoothstep(0.27, 0.48, dir.y);
+    vec3 cirrusColor = mix(vec3(0.72, 0.77, 0.88), vec3(1.0, 0.92, 0.81), day);
+    return mix(color, cirrusColor, wisps * visibility * 0.23);
 }
 
 float weatherHash(float n) {
@@ -298,7 +318,7 @@ vec3 applyRainWetness(vec3 color, float depth) {
 
     float upward = smoothstep(0.72, 0.97, normal.y);
     float skyLight = float(eyeBrightnessSmooth.y) / 240.0;
-    float exposed = smoothstep(0.45, 0.92, skyLight);
+    float exposed = smoothstep(0.16, 0.58, skyLight);
 
     // Iris wetness lingers after rain according to wetnessHalflife.
     float surfaceWet = wetness * upward * exposed;
@@ -306,7 +326,7 @@ vec3 applyRainWetness(vec3 color, float depth) {
 
     // Large, soft world-space patches imply shallow depressions and uneven drainage.
     float basin = puddleNoise(worldPos.xz);
-    float puddlePatch = smoothstep(0.46, 0.65, basin);
+    float puddlePatch = smoothstep(0.42, 0.64, basin);
     float puddle = surfaceWet * puddlePatch;
 
     // Fresh rain makes most exposed ground darker before obvious puddles have formed.
