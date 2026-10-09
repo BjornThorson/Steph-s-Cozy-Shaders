@@ -111,47 +111,37 @@ vec3 applyWitchMoonAtmosphere(vec3 color, vec3 worldDir, float skyPixel) {
     return color;
 }
 
+// Aurora rewrite: smooth flowing ribbons on a continuous world-direction field.
+// No angular wrapping and no flat global sky tint.
 vec3 applyAurora(vec3 color, vec3 worldDir, float skyPixel) {
     float night = nightFactor() * (1.0 - rainStrength);
-    // Skip expensive trigonometry and procedural noise outside visible night sky.
-    if (skyPixel <= 0.001 || night <= 0.001 || worldDir.y <= 0.02 || worldDir.y >= 0.98) return color;
-    float aboveHorizon = smoothstep(0.02, 0.22, worldDir.y);
-    float zenithFade = 1.0 - smoothstep(0.72, 0.98, worldDir.y);
+    if (skyPixel <= 0.001 || night <= 0.001 || worldDir.y <= 0.04) return color;
+    float height = worldDir.y;
+    float rise = smoothstep(0.06, 0.23, height);
+    float top = 1.0 - smoothstep(0.76, 0.97, height);
+    float drift = frameTimeCounter * 0.010;
 
-    // A continuous unit circle replaces the wrapped atan longitude.
-    // Its seventh harmonic makes seven wispy curtain bands around the sky.
-    vec2 circle = normalize(worldDir.xz);
-    vec2 harmonic = circle;
-    for (int i = 1; i < 7; ++i) {
-        harmonic = vec2(harmonic.x * circle.x - harmonic.y * circle.y,
-                        harmonic.x * circle.y + harmonic.y * circle.x);
-    }
+    // Directional planar coordinates yield broad, continuous undulating bands.
+    // Two overlapping waves avoid the old repetitive sevenfold pattern.
+    vec2 plane = worldDir.xz / max(0.48, height + 0.27);
+    float warp = sin(plane.x * 2.2 + drift * 1.2) * 0.20 +
+                 sin(plane.x * 4.1 - drift * 0.6) * 0.08;
+    float v = plane.y + warp + drift * 0.18;
+    float bandA = exp(-pow((v - sin(plane.x * 1.3 + drift) * 0.23) * 2.5, 2.0));
+    float bandB = exp(-pow((v + 0.72 - sin(plane.x * 1.8 - drift) * 0.18) * 3.1, 2.0));
+    float folds = 0.58 + 0.42 * sin(plane.x * 11.0 + sin(plane.y * 3.0 + drift) * 1.5);
+    float verticalShimmer = 0.80 + 0.20 * sin(height * 27.0 + drift * 2.0);
+    float strength = (bandA * 0.68 + bandB * 0.48) * folds *
+                     verticalShimmer * rise * top * night * 0.40;
 
-    float drift = frameTimeCounter * 0.018;
-    // Use continuous direction components for noise to eliminate the angular seam.
-    float broad = valueNoise(worldDir.xz * 3.5 + vec2(drift, worldDir.y * 2.0));
-    float fine = valueNoise(worldDir.xz * 10.0 + vec2(-drift * 1.4, worldDir.y * 3.0 + drift));
-    float curtainPhase = broad * 5.0 + drift * 2.0;
-    float curtainShape = harmonic.y * cos(curtainPhase) + harmonic.x * sin(curtainPhase);
-    curtainShape = pow(max(0.0, 0.67 + 0.33 * curtainShape), 2.0);
-
-    float vertical = smoothstep(0.05, 0.23, worldDir.y) * zenithFade;
-    float aurora = curtainShape * mix(0.45, 1.0, fine) * vertical * aboveHorizon;
-    aurora *= night * skyPixel * mix(0.43, 0.29, moonFullness());
-
-    vec3 green = vec3(0.22, 1.00, 0.58);
-    vec3 teal = vec3(0.12, 0.72, 0.86);
-    vec3 violet = vec3(0.48, 0.30, 0.82);
-    vec3 auroraColor = mix(green, teal, broad);
-    auroraColor = mix(auroraColor, violet, smoothstep(0.72, 1.0, fine) * 0.32);
-
-    return color + auroraColor * aurora;
+    vec3 teal = vec3(0.12, 0.62, 0.65);
+    vec3 mint = vec3(0.28, 0.88, 0.56);
+    vec3 violet = vec3(0.42, 0.30, 0.69);
+    vec3 tint = mix(teal, mint, clamp(folds, 0.0, 1.0));
+    tint = mix(tint, violet, smoothstep(0.67, 0.96, height) * 0.30);
+    return color + tint * strength;
 }
 
-
-
-// Celestial sky: sparse stable stars in a continuous 3D direction field.
-// Three orthogonal projections avoid longitude seams and screen-space swimming.
 float starField(vec3 direction, float scale, float seed) {
     vec3 p = direction * scale;
     vec3 cell = floor(p);
@@ -161,10 +151,10 @@ float starField(vec3 direction, float scale, float seed) {
         vec2 grid = i == 0 ? cell.xy : (i == 1 ? cell.yz : cell.xz);
         vec2 local = i == 0 ? f.xy : (i == 1 ? f.yz : f.xz);
         float chance = hash21(grid + vec2(seed, seed * 1.73));
-        float star = smoothstep(0.994, 0.9995, chance);
+        float star = smoothstep(0.974, 0.996, chance);
         vec2 offset = vec2(hash21(grid + seed + 17.1), hash21(grid + seed + 41.7)) - 0.5;
         float radius = length(local - offset * 0.62);
-        float dotShape = 1.0 - smoothstep(0.008, 0.033, radius);
+        float dotShape = 1.0 - smoothstep(0.008, 0.046, radius);
         brightness = max(brightness, star * dotShape);
     }
     return brightness;
@@ -179,7 +169,7 @@ vec3 applyStorybookStars(vec3 color, vec3 dir) {
     float shimmer = 0.93 + 0.07 * sin(frameTimeCounter * 0.7 + dot(dir, vec3(43.0, 71.0, 29.0)));
     vec3 warm = vec3(1.0, 0.87, 0.72);
     vec3 cool = vec3(0.74, 0.87, 1.0);
-    vec3 starlight = tiny * cool * 0.48 + bright * warm * 0.80;
+    vec3 starlight = tiny * cool * 0.75 + bright * warm * 1.12;
     return color + starlight * shimmer * night * horizon;
 }
 
@@ -211,7 +201,7 @@ vec3 applyShootingStar(vec3 color, vec3 dir) {
 vec3 applyStorybookClouds(vec3 color, vec3 dir) {
     if (dir.y <= 0.055) return color;
     float day = 1.0 - nightFactor();
-    float visibility = max(day, (1.0 - day) * 0.09);
+    float visibility = day * day; // Clear night sky for moon, stars and aurora.
     if (visibility <= 0.001) return color;
 
     vec2 sky = dir.xz / max(dir.y + 0.30, 0.38);

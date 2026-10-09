@@ -140,8 +140,8 @@ void main() {
     bool validDepth = behindDepth < 0.99999 && thickness > 0.001 && thickness < 64.0;
     float shallow = validDepth ? (1.0 - smoothstep(0.3, 3.0, thickness)) : 0.0;
     float contact = validDepth ? (1.0 - smoothstep(0.02, 0.43, thickness)) : 0.0;
-    float flowing = float(materialId == 1003);
-    float falling = float(materialId == 1004);
+    float flowing = 0.0; // State-specific mapping disabled pending runtime verification.
+    float falling = 0.0;
 
     vec3 N = normalize(viewNormal);
     vec3 V = normalize(-viewPosition);
