@@ -19,10 +19,10 @@ uniform vec3 fogColor;
 layout(location = 0) out vec4 fragColor;
 
 float wavePattern(vec2 p) {
-    float a = sin(p.x * 0.52 + p.y * 0.31 + frameTimeCounter * 0.90);
-    float b = sin(p.x * -0.29 + p.y * 0.61 - frameTimeCounter * 0.64);
+    float a = sin(p.x * 0.52 + p.y * 0.31 + frameTimeCounter * 1.22);
+    float b = sin(p.x * -0.29 + p.y * 0.61 - frameTimeCounter * 0.91);
     float c = sin((p.x + p.y) * 0.19 + frameTimeCounter * 0.37);
-    return (a + b * 0.65 + c * 0.35) / 2.0;
+    return (a + b * 0.65 + c * 0.35) / 1.75;
 }
 
 float hash21(vec2 p) {
@@ -130,9 +130,9 @@ void main() {
     // shallow/clear versus visually deeper water until depth refraction is added.
     float depthMood = clamp((1.0 - base.a) * 0.65 + fresnel * 0.20, 0.0, 1.0);
 
-    vec3 shallowTurquoise = vec3(0.075, 0.690, 0.700);
-    vec3 sunlitAqua = vec3(0.115, 0.760, 0.720);
-    vec3 mediterraneanBlue = vec3(0.025, 0.300, 0.510);
+    vec3 shallowTurquoise = vec3(0.075, 0.49, 0.78);
+    vec3 sunlitAqua = vec3(0.16, 0.61, 0.85);
+    vec3 mediterraneanBlue = vec3(0.035, 0.26, 0.57);
 
     vec3 waterColor = mix(shallowTurquoise, mediterraneanBlue, depthMood);
     waterColor = mix(waterColor, sunlitAqua, max(0.0, w) * 0.10);
@@ -142,17 +142,17 @@ void main() {
 
     // Looking downward: clear and inviting. Grazing angles: increasingly reflective.
     float transmission = mix(0.72, 0.45, fresnel);
-    vec3 transmitted = mix(base.rgb, waterColor, 0.66);
+    vec3 transmitted = mix(base.rgb, waterColor, 0.43);
     vec3 reflected = mix(waterColor, ambientSky, 0.72);
 
     vec3 color = mix(transmitted, reflected, fresnel * 0.68);
 
     // Warm glints ride only on the highest ripple crests.
     float glint = smoothstep(0.72, 0.98, w) * pow(fresnel, 0.65) * (1.0 - rainStrength);
-    color += vec3(1.00, 0.82, 0.52) * glint * 0.12;
+    color += vec3(1.00, 0.88, 0.67) * glint * 0.20;
 
     // Keep substantial transparency so the seabed remains visually important.
-    float alpha = clamp(base.a * transmission + fresnel * 0.25, 0.30, 0.78);
+    float alpha = clamp(base.a * transmission * 0.56 + fresnel * 0.22, 0.12, 0.67);
 
     fragColor = vec4(color, alpha);
 }

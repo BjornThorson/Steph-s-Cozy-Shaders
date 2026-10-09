@@ -133,11 +133,11 @@ vec3 applyAurora(vec3 color, vec3 worldDir, float skyPixel) {
     float fine = valueNoise(worldDir.xz * 10.0 + vec2(-drift * 1.4, worldDir.y * 3.0 + drift));
     float curtainPhase = broad * 5.0 + drift * 2.0;
     float curtainShape = harmonic.y * cos(curtainPhase) + harmonic.x * sin(curtainPhase);
-    curtainShape = pow(max(0.0, 0.55 + 0.45 * curtainShape), 3.0);
+    curtainShape = pow(max(0.0, 0.67 + 0.33 * curtainShape), 2.0);
 
-    float vertical = smoothstep(0.08, 0.30, worldDir.y) * zenithFade;
+    float vertical = smoothstep(0.05, 0.23, worldDir.y) * zenithFade;
     float aurora = curtainShape * mix(0.45, 1.0, fine) * vertical * aboveHorizon;
-    aurora *= night * skyPixel * mix(0.72, 0.48, moonFullness());
+    aurora *= night * skyPixel * mix(0.43, 0.29, moonFullness());
 
     vec3 green = vec3(0.22, 1.00, 0.58);
     vec3 teal = vec3(0.12, 0.72, 0.86);
@@ -211,28 +211,15 @@ vec3 applyShootingStar(vec3 color, vec3 dir) {
 vec3 applyStorybookClouds(vec3 color, vec3 dir) {
     if (dir.y <= 0.055) return color;
     float day = 1.0 - nightFactor();
-    float twilight = smoothstep(0.0, 0.25, day);
     float visibility = max(day, (1.0 - day) * 0.09);
     if (visibility <= 0.001) return color;
 
     vec2 sky = dir.xz / max(dir.y + 0.30, 0.38);
     vec2 drift = vec2(frameTimeCounter * 0.0027, frameTimeCounter * 0.0011);
 
-    // Square-like footprints from max-norm distance, rounded with noise.
-    vec2 cells = sky * 1.65 + drift;
-    vec2 id = floor(cells);
-    vec2 local = abs(fract(cells) - 0.5);
-    float radius = max(local.x, local.y);
-    float variation = valueNoise(cells * 1.7 + vec2(5.2, 3.7));
-    float coverage = hash21(id + vec2(21.7, 13.4));
-    float lower = (1.0 - smoothstep(0.25, 0.39, radius + (variation - 0.5) * 0.11));
-    lower *= smoothstep(0.37, 0.65, coverage);
-    lower *= smoothstep(0.07, 0.22, dir.y);
-    float sunFace = clamp(0.52 + 0.48 * dir.y + (variation - 0.5) * 0.25, 0.0, 1.0);
-    vec3 cloudShade = mix(vec3(0.57, 0.63, 0.76), vec3(1.0, 0.95, 0.82), sunFace);
-    cloudShade = mix(cloudShade, vec3(1.0, 0.75, 0.57), (1.0 - twilight) * 0.32);
-    color = mix(color, cloudShade, lower * visibility * (1.0 - rainStrength * 0.48) * 0.68);
-
+    // The first block-cloud prototype looked like flat pillows in-game.
+    // Disable it until a genuinely dimensional cloud lighting pass is ready.
+    // Retain the approved high-altitude wisps below.
     // Stretched, translucent high-altitude strokes, visually distinct from
     // the block-inspired lower layer.
     vec2 cirrusUV = vec2(sky.x * 2.5 + sky.y * 0.35, sky.y * 11.0 - sky.x * 0.7);
@@ -317,11 +304,10 @@ vec3 applyRainWetness(vec3 color, float depth) {
     if (normal.y < 0.0) normal = -normal;
 
     float upward = smoothstep(0.72, 0.97, normal.y);
-    float skyLight = float(eyeBrightnessSmooth.y) / 240.0;
-    float exposed = smoothstep(0.16, 0.58, skyLight);
+    float exposed = 1.0; // Pixel skylight unavailable in this pass; rain and upward-facing geometry gate the effect.
 
     // Iris wetness lingers after rain according to wetnessHalflife.
-    float surfaceWet = wetness * upward * exposed;
+    float surfaceWet = max(wetness, rainStrength * 0.65) * upward * exposed;
     if (surfaceWet <= 0.001) return color;
 
     // Large, soft world-space patches imply shallow depressions and uneven drainage.
@@ -438,6 +424,12 @@ void main() {
         float night = nightFactor();
         float skyExposure = smoothstep(0.06, 0.42, float(eyeBrightnessSmooth.y) / 240.0);
         color *= 1.0 - 0.24 * night * skyExposure;
+    }
+    // Pull down outdoor daytime exposure without dimming caves or nights.
+    if (hasSkylight && isEyeInWater == 0) {
+        float daylight = 1.0 - nightFactor();
+        float outdoor = smoothstep(0.30, 0.80, float(eyeBrightnessSmooth.y) / 240.0);
+        color *= 1.0 - 0.18 * daylight * outdoor;
     }
     color = storybookGrade(color);
     fragColor = vec4(clamp(color, 0.0, 1.0), scene.a);
