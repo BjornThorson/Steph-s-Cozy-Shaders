@@ -40,7 +40,7 @@ float weatherIntensity() {
 out vec4 fragColor;
 
 void main() {
-    vec4 weather = texture(texture, texcoord) * vertexColor;
+    vec4 weather = texture2D(texture, texcoord) * vertexColor;
     float intensity = weatherIntensity();
 
     // Preserve Minecraft's rain/snow geometry but vary how strongly it reads.

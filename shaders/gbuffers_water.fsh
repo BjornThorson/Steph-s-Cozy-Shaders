@@ -98,7 +98,7 @@ vec4 renderLava(vec4 base) {
 }
 
 void main() {
-    vec4 base = texture(texture, texcoord) * vertexColor;
+    vec4 base = texture2D(texture, texcoord) * vertexColor;
 
     if (materialId == 1002 && isFluid == 1) {
         fragColor = renderLava(base);
@@ -108,7 +108,7 @@ void main() {
     // Everything except explicitly identified water/lava keeps essentially
     // vanilla translucent behaviour. This protects glass and modded materials.
     if (materialId != 1001 || isFluid != 1) {
-        vec3 lit = base.rgb * texture(lightmap, lightcoord).rgb;
+        vec3 lit = base.rgb * texture2D(lightmap, lightcoord).rgb;
         fragColor = vec4(lit, base.a);
         return;
     }
