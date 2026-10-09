@@ -118,15 +118,21 @@ vec3 applyAurora(vec3 color, vec3 worldDir, float skyPixel) {
     float aboveHorizon = smoothstep(0.02, 0.22, worldDir.y);
     float zenithFade = 1.0 - smoothstep(0.72, 0.98, worldDir.y);
 
-    // Periodic angular noise avoids the seam where atan wraps at +/-pi.
-    float longitude = atan(worldDir.z, worldDir.x);
-    float latitude = asin(clamp(worldDir.y, -1.0, 1.0));
+    // A continuous unit circle replaces the wrapped atan longitude.
+    // Its seventh harmonic makes seven wispy curtain bands around the sky.
+    vec2 circle = normalize(worldDir.xz);
+    vec2 harmonic = circle;
+    for (int i = 1; i < 7; ++i) {
+        harmonic = vec2(harmonic.x * circle.x - harmonic.y * circle.y,
+                        harmonic.x * circle.y + harmonic.y * circle.x);
+    }
 
     float drift = frameTimeCounter * 0.018;
     // Use continuous direction components for noise to eliminate the angular seam.
-    float broad = valueNoise(worldDir.xz * 3.5 + vec2(drift, latitude * 1.3));
-    float fine = valueNoise(worldDir.xz * 10.0 + vec2(-drift * 1.4, latitude * 2.1 + drift));
-    float curtainShape = sin(longitude * 7.0 + broad * 5.0 + drift * 2.0);
+    float broad = valueNoise(worldDir.xz * 3.5 + vec2(drift, worldDir.y * 2.0));
+    float fine = valueNoise(worldDir.xz * 10.0 + vec2(-drift * 1.4, worldDir.y * 3.0 + drift));
+    float curtainPhase = broad * 5.0 + drift * 2.0;
+    float curtainShape = harmonic.y * cos(curtainPhase) + harmonic.x * sin(curtainPhase);
     curtainShape = pow(max(0.0, 0.55 + 0.45 * curtainShape), 3.0);
 
     float vertical = smoothstep(0.08, 0.30, worldDir.y) * zenithFade;
