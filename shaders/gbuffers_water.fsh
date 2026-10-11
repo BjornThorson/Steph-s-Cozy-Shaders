@@ -19,9 +19,9 @@ uniform sampler2D depthtex1;
 uniform vec2 viewSize;
 uniform mat4 gbufferProjectionInverse;
 
-// Set to 1 to verify water state classification in-game:
-// source blue, flowing amber, falling magenta, unknown red.
-#define WATER_STATE_DEBUG 0
+// Experimental: paint only water mapped as legacy level=8 solid red.
+// This verifies Oculus material classification; it does not detect impact.
+#define FALLING_WATER_RED_DEBUG 1
 
 
 layout(location = 0) out vec4 fragColor;
@@ -121,12 +121,11 @@ void main() {
         return;
     }
 
-    #if WATER_STATE_DEBUG
-    vec3 diagnostic = materialId == 1001 ? vec3(0.08, 0.35, 1.0) :
-                      materialId == 1003 ? vec3(1.0, 0.60, 0.08) :
-                      materialId == 1004 ? vec3(0.90, 0.10, 0.85) : vec3(1.0, 0.0, 0.0);
-    fragColor = vec4(diagnostic, 0.85);
-    return;
+    #if FALLING_WATER_RED_DEBUG
+    if (materialId == 1004) {
+        fragColor = vec4(1.0, 0.0, 0.0, 1.0);
+        return;
+    }
     #endif
 
     vec2 screenUV = gl_FragCoord.xy / viewSize;
