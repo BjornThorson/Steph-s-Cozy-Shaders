@@ -1,0 +1,56 @@
+name: Minecraft shader preflight
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [testing]
+    paths:
+      - 'shaders/**'
+      - 'tools/**'
+      - '.github/workflows/nex-minecraft-shader-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  glsl:
+    name: Compile, link and package Cozy shaders
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Khronos GLSL validator
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools
+      - name: Verify all shader stages and stage pairs
+        run: bash tools/validate_glsl.sh
+      - name: Validate shaderpack ZIP layout
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          paths = sorted(p for p in Path('shaders').rglob('*') if p.is_file())
+          required = {'final.vsh','final.fsh','gbuffers_water.vsh','gbuffers_water.fsh',
+                      'gbuffers_weather.vsh','gbuffers_weather.fsh','block.properties','shaders.properties'}
+          if not paths or any(p.is_symlink() for p in paths):
+              raise SystemExit('Missing or unsafe shader files')
+          with ZipFile('cozy-shaders-preflight.zip', 'w', ZIP_DEFLATED) as z:
+              for path in paths: z.write(path, path.as_posix())
+          with ZipFile('cozy-shaders-preflight.zip') as z:
+              items=set(z.namelist())
+              if z.testzip() is not None or any(not n.startswith('shaders/') for n in items):
+                  raise SystemExit('Invalid ZIP or top-level folder')
+              if not all('shaders/'+n in items for n in required):
+                  raise SystemExit('Missing required shader files')
+          print('Static shaderpack preflight passed; Minecraft runtime not tested')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cozy-shaders-zip-preflight
+          path: cozy-shaders-preflight.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Explain validation scope
+        run: |
+          echo 'GLSL compile, link, static checks and ZIP structure: checked.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Minecraft client, Oculus/Iris, GPU visual output, launcher profiles and FPS: NOT TESTED.' >> "$GITHUB_STEP_SUMMARY"
